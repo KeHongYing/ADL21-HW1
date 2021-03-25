@@ -4,12 +4,16 @@ from typing import Iterable, List
 class Vocab:
     PAD = "[PAD]"
     UNK = "[UNK]"
+    CLS = "[CLS]"
+    EOS = "[EOS]"
 
     def __init__(self, vocab: Iterable[str]) -> None:
         self.token2idx = {
             Vocab.PAD: 0,
             Vocab.UNK: 1,
-            **{token: i for i, token in enumerate(vocab, 2)},
+            Vocab.CLS: 2,
+            Vocab.EOS: 3,
+            **{token: i for i, token in enumerate(vocab, 4)},
         }
 
     @property
@@ -21,6 +25,14 @@ class Vocab:
         return self.token2idx[Vocab.UNK]
 
     @property
+    def cls_id(self) -> int:
+        return self.token2idx[Vocab.CLS]
+
+    @property
+    def eos_id(self) -> int:
+        return self.token2idx[Vocab.EOS]
+
+    @property
     def tokens(self) -> List[str]:
         return list(self.token2idx.keys())
 
@@ -28,7 +40,11 @@ class Vocab:
         return self.token2idx.get(token, self.unk_id)
 
     def encode(self, tokens: List[str]) -> List[int]:
-        return [self.token_to_id(token) for token in tokens]
+        return (
+            [self.cls_id]
+            + [self.token_to_id(token) for token in tokens]
+            + [self.eos_id]
+        )
 
     def encode_batch(
         self, batch_tokens: List[List[str]], to_len: int = None

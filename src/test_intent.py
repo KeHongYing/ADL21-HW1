@@ -4,7 +4,9 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Dict
 
+import pandas as pd
 import torch
+from torch.utils.data import DataLoader
 
 from dataset import SeqClsDataset
 from model import SeqClassifier
@@ -19,8 +21,9 @@ def main(args):
     intent2idx: Dict[str, int] = json.loads(intent_idx_path.read_text())
 
     data = json.loads(args.test_file.read_text())
-    dataset = SeqClsDataset(data, vocab, intent2idx, args.max_len)
+    dataset = SeqClsDataset(data, vocab, intent2idx, args.max_len, mode="TEST")
     # TODO: crecate DataLoader for test dataset
+    dataloader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=dataset.collate_fn)
 
     embeddings = torch.load(args.cache_dir / "embeddings.pt")
 
@@ -31,15 +34,34 @@ def main(args):
         args.dropout,
         args.bidirectional,
         dataset.num_classes,
-    )
+    ).to(args.device)
     model.eval()
 
     ckpt = torch.load(args.ckpt_path)
     # load weights into model
+    model.load_state_dict(ckpt)
 
     # TODO: predict dataset
 
     # TODO: write prediction to file (args.pred_file)
+
+    result = []
+    size = len(dataset)
+    current = 0
+
+    for seq in dataloader:
+        intents = seq["intents"].to(args.device)
+        idx = seq["id"]
+        
+        current += len(intents)
+        print(f"[{current:>5d}/{size:>5d}]", end="\r")
+
+        pred = model(intents)["labels"]
+        for label, idx in zip(pred.argmax(dim=1).type(torch.long), idx):
+            result.append([idx, dataset.idx2label(label.item())])
+    
+
+    pd.DataFrame(result, columns=["id", "intent"]).to_csv(args.pred_file, index=False)
 
 
 def parse_args() -> Namespace:

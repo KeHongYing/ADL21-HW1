@@ -1,0 +1,19 @@
+# Python
+.python-version
+*.pyc
+__pycache__/
+
+# Misc
+/.vscode/
+.DS_Store
+*tmp*
+*.csv
+*.zip
+*.txt
+
+cache/*
+
+ckpt/*
+
+checkpoints/*
+
