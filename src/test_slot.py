@@ -17,14 +17,14 @@ def main(args):
     with open(args.cache_dir / "vocab.pkl", "rb") as f:
         vocab: Vocab = pickle.load(f)
 
-    intent_idx_path = args.cache_dir / "intent2idx.json"
-    intent2idx: Dict[str, int] = json.loads(intent_idx_path.read_text())
+    tag_idx_path = args.cache_dir / "tag2idx.json"
+    tag2idx: Dict[str, int] = json.loads(tag_idx_path.read_text())
 
     data = json.loads(args.test_file.read_text())
-    dataset = SeqClsDataset(data, vocab, intent2idx, args.max_len, mode="TEST")
+    dataset = SeqClsDataset(data, vocab, tag2idx, args.max_len, mode="TEST")
     # TODO: crecate DataLoader for test dataset
     dataloader = DataLoader(
-        dataset, batch_size=args.batch_size, collate_fn=dataset.intent_collate_fn
+        dataset, batch_size=args.batch_size, collate_fn=dataset.slot_collate_fn
     )
 
     embeddings = torch.load(args.cache_dir / "embeddings.pt")
@@ -36,7 +36,7 @@ def main(args):
         args.dropout,
         args.bidirectional,
         dataset.num_classes,
-        "intent",
+        "slot",
     ).to(args.device)
     model.eval()
 
@@ -53,17 +53,29 @@ def main(args):
     current = 0
 
     for seq in dataloader:
-        intents = seq["intents"].to(args.device)
+        slots = seq["slots"].to(args.device)
         idx = seq["id"]
 
-        current += len(intents)
+        current += len(slots)
         print(f"[{current:>5d}/{size:>5d}]", end="\r")
 
-        pred = model(intents)["labels"]
-        for label, idx in zip(pred.argmax(dim=1).type(torch.long), idx):
-            result.append([idx, dataset.idx2label(label.item())])
+        pred = model(slots)["labels"]
+        for label, idx in zip(pred.argmax(dim=-1).type(torch.long), idx):
+            result.append(
+                [
+                    idx,
+                    " ".join(
+                        [
+                            dataset.idx2label(tagId.item())
+                            for tagId in label[
+                                : len(data[int(idx.split("-")[-1])]["tokens"])
+                            ]
+                        ]
+                    ),
+                ]
+            )
 
-    pd.DataFrame(result, columns=["id", "intent"]).to_csv(args.pred_file, index=False)
+    pd.DataFrame(result, columns=["id", "tags"]).to_csv(args.pred_file, index=False)
 
 
 def parse_args() -> Namespace:
@@ -75,12 +87,12 @@ def parse_args() -> Namespace:
         "--cache_dir",
         type=Path,
         help="Directory to the preprocessed caches.",
-        default="./cache/intent/",
+        default="./cache/slot/",
     )
     parser.add_argument(
         "--ckpt_path", type=Path, help="Path to model checkpoint.", required=True
     )
-    parser.add_argument("--pred_file", type=Path, default="pred.intent.csv")
+    parser.add_argument("--pred_file", type=Path, default="pred.slot.csv")
 
     # data
     parser.add_argument("--max_len", type=int, default=128)

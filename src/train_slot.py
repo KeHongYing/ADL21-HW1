@@ -34,83 +34,104 @@ def init_weights(self):
 
 def train(dataloader, model, loss_fn, optimizer, device):
     size = len(dataloader.dataset)
-    total_correct, total_loss = 0, 0
+    total_correct, total_sentence_correct, total_loss = 0, 0, 0
     current = 0
     cnt = 0
 
     model.train()
     for batch, data in enumerate(dataloader):
         correct = 0
+        sentence_correct = 0
         cnt += 1
 
-        intents = data["intents"].to(device)
+        slots = data["slots"].to(device)
         labels = data["labels"].to(device)
 
-        pred = model(intents)["labels"]
-        loss = loss_fn(pred, labels)
+        pred = model(slots)["labels"]
+        loss = loss_fn(pred.transpose(1, 2), labels)
 
-        correct += (pred.argmax(dim=1) == labels).type(torch.float).sum().item()
+        correct += (pred.argmax(dim=-1) == labels).type(
+            torch.float
+        ).sum().item() / labels.shape[1]
+        sentence_correct += (
+            torch.all(pred.argmax(dim=-1) == labels, dim=-1)
+            .type(torch.float)
+            .sum()
+            .item()
+        )
         total_correct += correct
+        total_sentence_correct += sentence_correct
         total_loss += loss
         correct /= pred.shape[0]
+        sentence_correct /= pred.shape[0]
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        current += len(intents)
+        current += len(slots)
         loss = loss.item()
         print(
-            f"Acc: {(100 * correct):>4.1f}%, loss: {loss:>7f}, [{current:>6d}/{size:>6d}]",
+            f"Slot Acc: {(100 * correct):>4.1f}%, Sentence Acc: {(100 * sentence_correct):>4.1f}%, loss: {loss:>7f}, [{current:>6d}/{size:>6d}]",
             end="\r",
         )
 
     total_correct /= current
+    total_sentence_correct /= current
     total_loss /= cnt
     print(
-        f"Acc: {(100 * total_correct):>4.1f}%, loss: {total_loss:>7f}, [{current:>6d}/{size:>6d}]",
+        f"Slot Acc: {(100 * total_correct):>4.1f}%, Sentence Acc: {(100 * total_sentence_correct):>4.1f}%, loss: {total_loss:>7f}, [{current:>6d}/{size:>6d}]",
     )
 
 
 def test(dataloader, model, loss_fn, device):
     size = len(dataloader.dataset)
 
-    total_correct, total_loss = 0, 0
+    total_correct, total_sentence_correct, total_loss = 0, 0, 0
     cnt = 0
 
     model.eval()
     with torch.no_grad():
         for data in dataloader:
-            intents = data["intents"].to(device)
+            slots = data["slots"].to(device)
             labels = data["labels"].to(device)
 
             cnt += 1
 
-            pred = model(intents)["labels"]
-            total_loss += loss_fn(pred, labels).item()
+            pred = model(slots)["labels"]
+            total_loss += loss_fn(pred.transpose(1, 2), labels).item()
             total_correct += (
-                (pred.argmax(dim=1) == labels).type(torch.float).sum().item()
+                (pred.argmax(dim=-1) == labels).type(torch.float).sum().item()
+            ) / labels.shape[1]
+            total_sentence_correct += (
+                torch.all(pred.argmax(dim=-1) == labels, dim=-1)
+                .type(torch.float)
+                .sum()
+                .item()
             )
 
     total_loss /= cnt
     total_correct /= size
+    total_sentence_correct /= size
 
-    print(f"Val Acc: {(100 * total_correct):>4.1f}%, Val loss: {total_loss:>7f}")
+    print(
+        f"Val Slot Acc: {(100 * total_correct):>4.1f}%, Val Sentence Acc: {(100 * total_sentence_correct):>4.1f}, Val loss: {total_loss:>7f}"
+    )
 
-    return total_correct, total_loss
+    return total_sentence_correct, total_loss
 
 
 def main(args):
     with open(args.cache_dir / "vocab.pkl", "rb") as f:
         vocab: Vocab = pickle.load(f)
 
-    intent_idx_path = args.cache_dir / "intent2idx.json"
-    intent2idx: Dict[str, int] = json.loads(intent_idx_path.read_text())
+    tag_idx_path = args.cache_dir / "tag2idx.json"
+    tag2idx: Dict[str, int] = json.loads(tag_idx_path.read_text())
 
     data_paths = {split: args.data_dir / f"{split}.json" for split in SPLITS}
     data = {split: json.loads(path.read_text()) for split, path in data_paths.items()}
     datasets: Dict[str, SeqClsDataset] = {
-        split: SeqClsDataset(split_data, vocab, intent2idx, args.max_len, mode=split)
+        split: SeqClsDataset(split_data, vocab, tag2idx, args.max_len, mode=split)
         for split, split_data in data.items()
     }
     # TODO: crecate DataLoader for train / dev datasets
@@ -119,7 +140,7 @@ def main(args):
             datasets[split],
             batch_size=args.batch_size,
             shuffle=True,
-            collate_fn=datasets[split].intent_collate_fn,
+            collate_fn=datasets[split].slot_collate_fn,
         )
         for split in SPLITS
     }
@@ -135,7 +156,7 @@ def main(args):
         dropout=args.dropout,
         bidirectional=args.bidirectional,
         num_class=datasets[TRAIN].num_classes,
-        mode="intent",
+        mode="slot",
     ).to(args.device)
 
     model.apply(init_weights)
@@ -171,14 +192,14 @@ def main(args):
             early_stop = 0
             min_loss = loss
 
-        if early_stop == 10:
+        if early_stop == 15:
             print("Early stop...")
             break
 
     print(f"Done! Best model Acc: {(100 * max_acc):>4.1f}%")
     torch.save(model.state_dict(), args.ckpt_dir / f"{args.model}.pt")
 
-    with open("result_intent.txt", "a") as f:
+    with open("result_slot.txt", "a") as f:
         f.write(f"{args.model}, {max_acc:>5f}\n")
 
     # TODO: Inference on test set
@@ -190,19 +211,19 @@ def parse_args() -> Namespace:
         "--data_dir",
         type=Path,
         help="Directory to the dataset.",
-        default="./data/intent/",
+        default="./data/slot/",
     )
     parser.add_argument(
         "--cache_dir",
         type=Path,
         help="Directory to the preprocessed caches.",
-        default="./cache/intent/",
+        default="./cache/slot/",
     )
     parser.add_argument(
         "--ckpt_dir",
         type=Path,
         help="Directory to save the model file.",
-        default="./ckpt/intent/",
+        default="./ckpt/slot/",
     )
     parser.add_argument(
         "--model",

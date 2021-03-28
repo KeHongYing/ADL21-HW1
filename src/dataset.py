@@ -33,22 +33,45 @@ class SeqClsDataset(Dataset):
     def num_classes(self) -> int:
         return len(self.label_mapping)
 
-    def collate_fn(self, samples: List[Dict]) -> Dict:
+    def intent_collate_fn(self, samples: List[Dict]) -> Dict:
         # TODO: implement collate_fn
         tokens = self.vocab.encode_batch([s["text"].split() for s in samples])
         if self.mode != "TEST":
             labels = [self.label_mapping[s["intent"]] for s in samples]
-        else:
-            idx = [s["id"] for s in samples]
 
-        if self.mode != "TEST":
             return {
                 "intents": torch.tensor(tokens, dtype=torch.long),
                 "labels": torch.tensor(labels, dtype=torch.long),
             }
         else:
+            idx = [s["id"] for s in samples]
+
             return {
                 "intents": torch.tensor(tokens, dtype=torch.long),
+                "id": idx,
+            }
+
+    def slot_collate_fn(self, samples: List[Dict]) -> Dict:
+        tokens = self.vocab.encode_batch([s["tokens"] for s in samples])
+        padding_len = len(tokens[0])
+
+        if self.mode != "TEST":
+            labels = [
+                [self.label_mapping[tag] for tag in s["tags"]]
+                + [0 for _ in range(padding_len - len(s["tags"]))]
+                for s in samples
+            ]
+
+            return {
+                "slots": torch.tensor(tokens, dtype=torch.long),
+                "labels": torch.tensor(labels, dtype=torch.long),
+            }
+
+        else:
+            idx = [s["id"] for s in samples]
+
+            return {
+                "slots": torch.tensor(tokens, dtype=torch.long),
                 "id": idx,
             }
 
