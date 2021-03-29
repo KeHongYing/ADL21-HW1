@@ -11,9 +11,4 @@ __pycache__/
 *.zip
 *.txt
 
-cache/*
-
 ckpt/*
-
-checkpoints/*
-

@@ -1,10 +1,10 @@
 import json
 import pickle
+import csv
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Dict
 
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
@@ -63,7 +63,10 @@ def main(args):
         for label, idx in zip(pred.argmax(dim=1).type(torch.long), idx):
             result.append([idx, dataset.idx2label(label.item())])
 
-    pd.DataFrame(result, columns=["id", "intent"]).to_csv(args.pred_file, index=False)
+    with open(args.pred_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, lineterminator="\n")
+        writer.writerow(["id", "intent"])
+        writer.writerows(result)
 
 
 def parse_args() -> Namespace:

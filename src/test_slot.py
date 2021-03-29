@@ -1,10 +1,10 @@
 import json
 import pickle
+import csv
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Dict
 
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
@@ -68,14 +68,17 @@ def main(args):
                         [
                             dataset.idx2label(tagId.item())
                             for tagId in label[
-                                : len(data[int(idx.split("-")[-1])]["tokens"])
+                                1 : len(data[int(idx.split("-")[-1])]["tokens"]) + 1
                             ]
                         ]
                     ),
                 ]
             )
 
-    pd.DataFrame(result, columns=["id", "tags"]).to_csv(args.pred_file, index=False)
+    with open(args.pred_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, lineterminator="\n")
+        writer.writerow(["id", "tags"])
+        writer.writerows(result)
 
 
 def parse_args() -> Namespace:

@@ -57,8 +57,9 @@ class SeqClsDataset(Dataset):
 
         if self.mode != "TEST":
             labels = [
-                [self.label_mapping[tag] for tag in s["tags"]]
-                + [0 for _ in range(padding_len - len(s["tags"]))]
+                [self.label_mapping["O"]]
+                + [self.label_mapping[tag] for tag in s["tags"]]
+                + [self.label_mapping["O"] for _ in range(padding_len - len(s["tags"]) - 1)]
                 for s in samples
             ]
 
