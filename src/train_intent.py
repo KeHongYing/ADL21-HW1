@@ -138,7 +138,8 @@ def main(args):
         mode="intent",
     ).to(args.device)
 
-    model.apply(init_weights)
+    if args.init_parm:
+        model.apply(init_weights)
 
     # TODO: init optimizer
     optimizer = torch.optim.AdamW(
@@ -218,6 +219,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--num_layers", type=int, default=3)
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--bidirectional", type=bool, default=True)
+    parser.add_argument("--init_parm", type=bool, default=True)
 
     # optimizer
     parser.add_argument("--lr", type=float, default=1e-4)
