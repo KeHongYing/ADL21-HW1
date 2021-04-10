@@ -1,0 +1,1 @@
+python3.8 src/test_slot.py --test_file "${1}" --ckpt_path ckpt/slot/model_best.pt --pred_file "${2}" --device cuda:0
