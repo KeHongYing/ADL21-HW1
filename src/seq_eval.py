@@ -84,7 +84,7 @@ def main(args):
 
             cnt += 1
 
-    print(classification_report(ground_truth, result))
+    print(classification_report(ground_truth, result, mode="strict"))
     print(f"joint: {joint_acc / cnt}")
     print(f"token: {token_acc / token_num}")
 
